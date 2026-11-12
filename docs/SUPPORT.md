@@ -74,3 +74,18 @@ node --test tests/core.test.js
 ```
 
 These tests validate parsing and simulated Resolve calls only; they do not prove compatibility with a particular real Resolve version. Submit an issue containing steps to reproduce and the exact error message.
+
+## FFprobe installation and detection
+
+The installer detects FFprobe on PATH, then the previously configured user `CUTPOINT_RESOLVE_FFPROBE`, then common Windows FFmpeg/WinGet folders. If it cannot find a working FFprobe, it attempts installation through WinGet. It fails with a clear message if WinGet is missing or cannot complete the install.
+
+To verify after installation (open a **new** PowerShell window):
+
+```powershell
+$probe = [Environment]::GetEnvironmentVariable('CUTPOINT_RESOLVE_FFPROBE','User')
+& $probe -version
+```
+
+If `winget` is unavailable, install Windows App Installer or obtain FFmpeg from a trusted publisher and rerun the plugin installer. The installer never installs unknown third-party binaries or downloads the proprietary Blackmagic SDK.
+
+After installing, restart Resolve to inherit the configured FFprobe executable path. The plugin continues to use only completed Cutpoint analysis JSON; no Cutpoint or Ollama processes are required.

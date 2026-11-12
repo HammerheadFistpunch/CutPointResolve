@@ -20,9 +20,11 @@ A free, general-purpose **DaVinci Resolve Studio Workflow Integration** that bui
 2. Extract this ZIP, preserving folders.
 3. Exit Resolve.
 4. Open PowerShell **as Administrator**, change into the extracted folder, and run `powershell -ExecutionPolicy Bypass -File .\install.ps1`.
-5. The installer looks for Blackmagic's **version-matched** `WorkflowIntegration.node` under the installed Resolve SDK, copies it into the plugin, and leaves your media untouched. If it cannot find the module it **stops safely**; see the printed SDK path and locate the official module.
+5. The installer checks for FFprobe and automatically installs FFmpeg Essentials using Windows Package Manager (WinGet) only if missing. It also looks for Blackmagic's **version-matched** `WorkflowIntegration.node` under the installed Resolve SDK, copies it into the plugin, and leaves your media untouched. If it cannot find the module it **stops safely**; see the printed SDK path and locate the official module.
 6. Restart Resolve Studio, open an existing project, and choose **Workspace → Workflow Integrations → Cutpoint Importer**.
 7. Select the media root and Cutpoint analysis folder, **Scan**, review warnings, then **Import to Resolve**.
+
+You can opt out of automatic dependency installation with `install.ps1 -NoAutoInstall` (installation then stops if FFprobe is missing). Neither Cutpoint nor Ollama must be installed on the Resolve machine to import previously analyzed JSON. The installer never installs Resolve Studio or proprietary Blackmagic SDK components.
 
 If the plugin does not appear in the menu, confirm the folder contains `manifest.xml`, `main.js`, `package.json`, and `WorkflowIntegration.node`, and that your SDK module matches Resolve Studio's version. The plugin installation location is `%PROGRAMDATA%\Blackmagic Design\DaVinci Resolve\Support\Workflow Integration Plugins\com.cutpoint.resolve`.
 
@@ -30,7 +32,7 @@ If the plugin does not appear in the menu, confirm the folder contains `manifest
 
 - DaVinci Resolve **Studio** with Workflow Integrations support.
 - Blackmagic-supplied `WorkflowIntegration.node` for **your installed Resolve version** (not redistributed here).
-- FFprobe on PATH for accurate embedded creation dates and source rates (`ffprobe -version`). Missing FFprobe falls back to filesystem time and 30 fps; this is NOT accurate enough for production without review.
+- FFprobe for accurate embedded creation dates and source rates. The installer checks for it, installs FFmpeg Essentials using WinGet if needed, and records its executable path for Resolve. WinGet or a manual FFprobe install is required if automatic setup is unavailable.
 - Original media available at the original paths or by unambiguous filename under the selected media root.
 
 ## Important v0.1 limitations

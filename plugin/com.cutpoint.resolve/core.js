@@ -12,7 +12,7 @@ function listFiles(root, predicate) {
 function sourceKey(p){return path.normalize(p).toLowerCase();}
 function probe(file){
   try{
-    const x=cp.execFileSync('ffprobe',['-v','error','-show_entries','format_tags=creation_time:stream=index,codec_type,r_frame_rate,avg_frame_rate:stream_tags=creation_time,timecode','-of','json',file],{encoding:'utf8',timeout:20000,windowsHide:true,maxBuffer:2e6});
+    const x=cp.execFileSync(process.env.CUTPOINT_RESOLVE_FFPROBE || 'ffprobe',['-v','error','-show_entries','format_tags=creation_time:stream=index,codec_type,r_frame_rate,avg_frame_rate:stream_tags=creation_time,timecode','-of','json',file],{encoding:'utf8',timeout:20000,windowsHide:true,maxBuffer:2e6});
     const d=JSON.parse(x); const v=(d.streams||[]).find(s=>s.codec_type==='video') || {};
     const fraction=(s)=>{if(!s)return 0;const [a,b]=s.split('/').map(Number);return a&&b?a/b:0};
     const fps=fraction(v.avg_frame_rate)||fraction(v.r_frame_rate)||30;

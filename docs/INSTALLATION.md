@@ -8,7 +8,7 @@ This document applies to **v0.1 developer preview**. The integration has automat
 - A valid, currently open Resolve project for importing.
 - The **official** `WorkflowIntegration.node` included with the Developer / Workflow Integrations example for your exact Resolve version. This binary is proprietary and **not** distributed in this repository.
 - The original media files on an accessible drive. No separate Cutpoint export is necessary; select a folder containing its `highlights.json` output.
-- `ffprobe` installed and available on PATH. Verify in PowerShell: `ffprobe -version`. If missing, the preview falls back to filesystem dates and 30 fps; don't rely on this fallback for a production edit.
+- FFprobe is required for reliable timestamp/frame-rate extraction. The installer detects it and, if missing, installs Gyan FFmpeg Essentials (including FFprobe) through WinGet. If WinGet is unavailable or installation fails, the installer stops with instructions. It saves `CUTPOINT_RESOLVE_FFPROBE` as a per-user environment variable for use by Resolve.
 
 Cutpoint and Ollama do **not** need to be running while importing an already-completed analysis.
 
@@ -23,13 +23,14 @@ Cutpoint and Ollama do **not** need to be running while importing an already-com
    powershell -ExecutionPolicy Bypass -File .\install.ps1
    ```
 
-5. The installer checks a short list of known locations for the official SDK module. If it cannot find the file it stops **without installing the plugin**. Locate it using Blackmagic's Developer documentation; do not download unknown `.node` binaries from third-party sites. The target plugin directory is:
+5. The installer checks FFprobe, installing it through WinGet only when missing, then finds the official SDK module. The installer does not install Cutpoint, Ollama, Node.js, or Resolve Studio. The plugin uses Resolve's Electron runtime, so Node.js is only needed for optional local tests. To prevent automatic installation, run `powershell -ExecutionPolicy Bypass -File .\install.ps1 -NoAutoInstall`; if FFprobe is absent this deliberately stops.
+6. The installer checks known locations and the installed SDK tree for the official SDK module. If it cannot find the file it stops **without installing the plugin**. Locate it using Blackmagic's Developer documentation; do not download unknown `.node` binaries from third-party sites. The target plugin directory is:
 
    ```text
    C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\Workflow Integration Plugins\com.cutpoint.resolve
    ```
 
-6. Restart Resolve Studio. Open a project, then choose **Workspace → Workflow Integrations → Cutpoint Importer**.
+7. Restart Resolve Studio. Open a project, then choose **Workspace → Workflow Integrations → Cutpoint Importer**.
 
 The plugin is a Resolve-managed Electron workflow integration, not a permanently docked Edit-page panel. It does not require an npm install as shipped.
 
@@ -73,3 +74,13 @@ The analysis and media roots may be on different drives. Existing Cutpoint sourc
 ## Notes on portability
 
 The plugin uses **original media paths** in Resolve and does **not** render or transcode clips. Keep the media online; if you move it later, relink it in Resolve. If Cutpoint is rerun, rescan and import again; v0.1 intentionally creates a new timeline instead of updating an existing edited timeline.
+
+## Dependency management
+
+- **Resolve Studio:** Must be installed and licensed separately; this installer will not download or change Resolve.
+- **Official WorkflowIntegration.node:** Proprietary SDK component supplied with the installed Resolve version. If not found, the installer stops before making changes; obtain the SDK through Blackmagic documentation.
+- **FFprobe:** Used for source frame rate and recording timestamps. Existing working installations are reused, otherwise the installer attempts `winget install --id Gyan.FFmpeg.Essentials --exact --silent --accept-source-agreements --accept-package-agreements`. It validates `ffprobe -version` and saves an explicit path as the user environment variable `CUTPOINT_RESOLVE_FFPROBE`. Restart Resolve after installation.
+- **Node.js:** Not required for normal plugin runtime; optional only for `node --test`.
+- **Cutpoint/Ollama:** Not needed for import if analysis JSON already exists.
+
+The installer does not silently downgrade or upgrade existing installations. No dependency is removed by the uninstaller. FFmpeg is third-party software distributed under its own license.
