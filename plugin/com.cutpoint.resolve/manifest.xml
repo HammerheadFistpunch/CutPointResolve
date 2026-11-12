@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<BlackmagicDesign>
+  <Plugin>
+    <Id>com.cutpoint.resolve</Id>
+    <Name>Cutpoint Importer</Name>
+    <Version>0.1.0</Version>
+    <Description>Non-destructive Cutpoint selects and annotations</Description>
+    <FilePath>main.js</FilePath>
+  </Plugin>
+</BlackmagicDesign>
