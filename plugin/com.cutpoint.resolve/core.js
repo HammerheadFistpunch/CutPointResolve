@@ -57,10 +57,21 @@ function orderSelections(items,mode='chronological'){
   else copy.sort((a,b)=>a.captureMs-b.captureMs||a.source.localeCompare(b.source)||a.start-b.start);
   return copy;
 }
+function highlightsFor(items,percent=25){
+  const percentage=Number(percent);
+  if(!Number.isFinite(percentage)||percentage<1||percentage>100)throw Error('Highlights percentage must be from 1 to 100.');
+  if(!items.length)return [];
+  const count=Math.max(1,Math.ceil(items.length*percentage/100));
+  // Deterministic selection, including duplicate scores: earlier recordings win ties.
+  const top=orderSelections(items,'ranked').slice(0,count);
+  return orderSelections(top,'chronological');
+}
 function preview(config){const data=selectFiles(config.mediaRoot,config.analysisRoot);return {
   totalFiles:data.allMedia.length,matchedSources:data.sources.length,analyses:data.analyses.length,
   selections:data.selected.length,totalSelectedSeconds:Math.round(data.selected.reduce((n,c)=>n+c.duration,0)*10)/10,
   missing:data.missing,warnings:data.warnings,order:(config.order||'chronological'),
+  highlights:config.createHighlights===false?0:highlightsFor(data.selected,config.highlightPercent??25).length,
+  highlightPercent:config.highlightPercent??25,
   samples:orderSelections(data.selected,config.order).slice(0,12).map(c=>({file:path.basename(c.source),start:c.start,end:c.end,label:c.label,score:c.score,captureSource:c.captureSource}))
 };}
 function safeArray(v){return Array.isArray(v)?v:[];}
@@ -90,23 +101,35 @@ function importToResolve(resolve,config,onProgress=()=>{}){
    const added=safeArray(mp.ImportMedia([file]));if(!added.length)throw Error(`Resolve could not import ${file}`);
    existing.set(sourceKey(file),added[0]);count++;
  }
- const sorted=orderSelections(d.selected,config.order);
- const timelineName=(config.timelineName||'Cutpoint Selects').trim()+' '+new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
  const timelineBin=findOrCreate(mp,root,'Timelines');
- if(!mp.SetCurrentFolder(timelineBin))throw Error('Cannot set Timelines bin');
- const tl=mp.CreateEmptyTimeline(timelineName);if(!tl)throw Error('Could not create timeline');
- if(!project.SetCurrentTimeline(tl))throw Error('Could not activate new timeline');
- let created=0,markers=0;
- for(const c of sorted){const source=existing.get(sourceKey(c.source));if(!source)throw Error('Missing media pool clip for '+c.source);
-  // Resolve's scripting API accepts source frame ranges; endFrame is treated as inclusive.
-  const first=Math.max(0,Math.round(c.start*c.fps));const last=Math.max(first,Math.round(c.end*c.fps)-1);
-  const items=safeArray(mp.AppendToTimeline([{mediaPoolItem:source,startFrame:first,endFrame:last}]));
-  if(!items.length)throw Error(`AppendToTimeline failed for ${path.basename(c.source)} ${c.start}-${c.end}`);
-  created++;
-  if(config.markers!==false){try{if(addClipMarker(items[0],c))markers++;}catch(e){onProgress(`Marker warning: ${e.message}`);}}
-  if(created%10===0)onProgress(`Added ${created}/${sorted.length} selections`);
+ const timestamp=new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+ const prefix=(config.timelineName||'Cutpoint').trim()||'Cutpoint';
+ const allName=prefix+' - All Selects '+timestamp;
+ const highlightsName=prefix+' - Highlights '+timestamp;
+ const doHighlights=config.createHighlights!==false;
+ // Validate configuration before modifying the timeline portion of the project.
+ const highlightSelections=doHighlights?highlightsFor(d.selected,config.highlightPercent??25):[];
+ const timelineResults=[];
+ function assemble(name,selections){
+   if(!mp.SetCurrentFolder(timelineBin))throw Error('Cannot set Timelines bin');
+   const tl=mp.CreateEmptyTimeline(name);if(!tl)throw Error('Could not create timeline '+name);
+   if(!project.SetCurrentTimeline(tl))throw Error('Could not activate new timeline '+name);
+   let clips=0,markers=0;
+   for(const c of selections){
+     const source=existing.get(sourceKey(c.source));if(!source)throw Error('Missing media pool clip for '+c.source);
+     const first=Math.max(0,Math.round(c.start*c.fps));
+     const last=Math.max(first,Math.round(c.end*c.fps)-1);
+     const items=safeArray(mp.AppendToTimeline([{mediaPoolItem:source,startFrame:first,endFrame:last}]));
+     if(!items.length)throw Error(`AppendToTimeline failed in ${name} for ${path.basename(c.source)} ${c.start}-${c.end}`);
+     clips++;
+     if(config.markers!==false){try{if(addClipMarker(items[0],c))markers++;}catch(e){onProgress(`Marker warning: ${e.message}`);}}
+     if(clips%10===0||clips===selections.length)onProgress(`${name}: added ${clips}/${selections.length} selections`);
+   }
+   const result={name,clips,markers};timelineResults.push(result);return result;
  }
- // No changes to source files; no rendering or transcoding.
- return {timeline:timelineName,selected:created,importedMedia:count,markers,warnings:d.warnings};
+ const all=assemble(allName,orderSelections(d.selected,config.order));
+ if(doHighlights)assemble(highlightsName,highlightSelections);
+ // Original files are imported just once, and both timelines reference those same Media Pool items.
+ return {timeline:all.name,selected:all.clips,importedMedia:count,markers:timelineResults.reduce((n,t)=>n+t.markers,0),timelines:timelineResults,warnings:d.warnings};
 }
-module.exports={selectFiles,orderSelections,preview,importToResolve,sourceKey};
+module.exports={selectFiles,orderSelections,highlightsFor,preview,importToResolve,sourceKey};

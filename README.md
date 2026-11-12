@@ -1,6 +1,6 @@
 # Cutpoint → Resolve (v0.1 developer preview)
 
-A free, general-purpose **DaVinci Resolve Studio Workflow Integration** that builds a source-native selects timeline from Cutpoint `highlights.json` files. It never re-encodes the source footage.
+A free, general-purpose **DaVinci Resolve Studio Workflow Integration** that builds two source-native timelines from Cutpoint `highlights.json` files. It never re-encodes the source footage.
 
 ## Required upstream analyzer: Cutpoint
 
@@ -14,7 +14,8 @@ Install and run Cutpoint to analyze the original footage first; then select its 
 - Recursively indexes original media, with relocation by filename **only when unambiguous**.
 - Dry-run preview: counts, example ranges, missing media, timestamp uncertainty.
 - Imports original files into Resolve, mirroring source-folder hierarchy as Media Pool bins.
-- Creates a **new**, date-stamped timeline (never overwrites an edited one).
+- Creates **two new, date-stamped timelines** by default: **All Selects** (every Cutpoint candidate) and **Highlights** (the top-scoring 25% by default). Neither overwrites an existing edit.
+- Highlights percentage is configurable (10%, 20%, 25%, 33%, 50%, or 100%); selected highlights are arranged chronologically. The highlights timeline can be disabled.
 - Adds every selected In/Out as an independent clip, including multiple selections from one recording.
 - Adds clip markers containing labels, scores, feature signals, and traceability fields.
 - Orders clips by embedded capture timestamp + source In, source order, or rank.
@@ -28,7 +29,7 @@ Install and run Cutpoint to analyze the original footage first; then select its 
 4. Open PowerShell **as Administrator**, change into the extracted folder, and run `powershell -ExecutionPolicy Bypass -File .\install.ps1`.
 5. The installer checks for FFprobe and automatically installs FFmpeg Essentials using Windows Package Manager (WinGet) only if missing. It also looks for Blackmagic's **version-matched** `WorkflowIntegration.node` under the installed Resolve SDK, copies it into the plugin, and leaves your media untouched. If it cannot find the module it **stops safely**; see the printed SDK path and locate the official module.
 6. Restart Resolve Studio, open an existing project, and choose **Workspace → Workflow Integrations → Cutpoint Importer**.
-7. Select the media root and Cutpoint analysis folder, **Scan**, review warnings, then **Import to Resolve**.
+7. Select the media root and Cutpoint analysis folder, choose a highlights percentage (default **top 25%**), **Scan**, review both selection counts, then **Import to Resolve**.
 
 You can opt out of automatic dependency installation with `install.ps1 -NoAutoInstall` (installation then stops if FFprobe is missing). Neither Cutpoint nor Ollama must be installed on the Resolve machine to import previously analyzed JSON. The installer never installs Resolve Studio or proprietary Blackmagic SDK components.
 
@@ -52,7 +53,7 @@ If the plugin does not appear in the menu, confirm the folder contains `manifest
 - Reimport creates a new timeline. Media de-duplication relies on the Media Pool's `File Path` property.
 - All media is imported by default; disable that option to import only referenced selections.
 - Unexpected failures while appending selections may leave a partial new timeline. Original sources remain untouched.
-- No one-click timeline B/highlights yet; ranked mode provides an alternative complete selects order.
+- Highlights are a score-based shortlist, not a semantic edit; scores are relative to Cutpoint's analysis settings. The full timeline retains every valid candidate, including lower-ranked selections.
 
 ## Development
 

@@ -10,5 +10,25 @@ test('non-destructive Resolve operations append original source ranges and notes
  const mp={GetRootFolder:()=>root,AddSubFolder:(parent,name)=>{const o={parent:parent.GetName(),...makeFolder(name)};folders.push(o);return o;},SetCurrentFolder:()=>true,ImportMedia:(files)=>{imported++;return [clip]},CreateEmptyTimeline:(name)=>{timeline={name};return timeline;},AppendToTimeline:(c)=>{items.push(c[0]);return [{AddMarker:()=>true}];}};
  const project={GetMediaPool:()=>mp,SetCurrentTimeline:()=>true};const resolve={GetProjectManager:()=>({GetCurrentProject:()=>project})};
  const result=core.importToResolve(resolve,{mediaRoot:x.media,analysisRoot:x.ana,order:'source',mirrorBins:true,markers:true,importAllMedia:true});
- assert.equal(result.selected,2);assert.equal(result.markers,2);assert.equal(imported,1);assert.equal(items.length,2);assert.equal(items[0].mediaPoolItem,clip);assert(items[0].endFrame>=items[0].startFrame);assert(timeline.name.includes('Cutpoint Selects'));
+ assert.equal(result.selected,2);assert.equal(result.markers,3);assert.equal(imported,1);assert.equal(items.length,3);assert.equal(result.timelines.length,2);assert.equal(result.timelines[0].clips,2);assert.equal(result.timelines[1].clips,1);assert.equal(items[0].mediaPoolItem,clip);assert(items[0].endFrame>=items[0].startFrame);assert(timeline.name.includes('Cutpoint Selects'));
  }finally{fs.rmSync(x.dir,{recursive:true,force:true});}});
+test('highlight selection keeps top scores with chronological ordering',()=>{
+ const c=(id,score,time)=>({id,score,captureMs:time,source:'video.mp4',start:0});
+ const input=[c('low',2,100),c('top',99,300),c('middle',20,200),c('high',50,100)];
+ assert.deepEqual(core.highlightsFor(input,50).map(x=>x.id),['high','top']);
+ assert.deepEqual(core.highlightsFor(input,25).map(x=>x.id),['top']);
+ assert.deepEqual(core.highlightsFor(input,100).map(x=>x.id),['low','high','middle','top']);
+ assert.throws(()=>core.highlightsFor(input,0),/percentage/);
+});
+test('optional highlights may be disabled without affecting complete selects',()=>{
+ const x=fixture();try{
+  let timelines=0,appended=0;
+  const root={GetName:()=> 'root',GetClipList:()=>[],GetSubFolderList:()=>[]};
+  const folder={GetName:()=> 'Timelines',GetClipList:()=>[],GetSubFolderList:()=>[]};
+  const mp={GetRootFolder:()=>root,AddSubFolder:()=>folder,SetCurrentFolder:()=>true,ImportMedia:()=>[{GetClipProperty:()=>x.f}],CreateEmptyTimeline:()=>{timelines++;return {};},AppendToTimeline:()=>{appended++;return [{AddMarker:()=>true}]}};
+  const project={GetMediaPool:()=>mp,SetCurrentTimeline:()=>true};
+  const resolve={GetProjectManager:()=>({GetCurrentProject:()=>project})};
+  const result=core.importToResolve(resolve,{mediaRoot:x.media,analysisRoot:x.ana,createHighlights:false,mirrorBins:false});
+  assert.equal(timelines,1);assert.equal(appended,2);assert.equal(result.timelines.length,1);
+ }finally{fs.rmSync(x.dir,{recursive:true,force:true});}
+});

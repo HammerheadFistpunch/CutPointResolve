@@ -46,10 +46,10 @@ The plugin is a Resolve-managed Electron workflow integration, not a permanently
 1. **Back up your Resolve project or work in a new empty test project.** The importer adds a timeline and Media Pool items; it does not modify original video files.
 2. In the plugin, select **Media root** (the root of the nested folders containing source files).
 3. Select **Cutpoint analysis root** (a Cutpoint output/project directory containing one or more `highlights.json` files, searched recursively).
-4. Choose timeline ordering: chronological capture time (default), source order, or score ranking.
+4. Choose **All Selects** timeline ordering: chronological capture time (default), source order, or score ranking. Set the **Highlights** cutoff (top 25% by default), or disable the optional highlights timeline.
 5. Choose whether to mirror the media subfolders as Resolve bins, import all indexed media (or only used sources), and add clip markers.
-6. Click **Scan**. Read missing-media warnings and timestamp caveats. Import is blocked if a referenced source cannot be located unambiguously.
-7. Click **Import to Resolve**. The plugin creates a **new timestamped selects timeline** containing every valid Cutpoint selection, with distinct clips for repeated source-file ranges.
+6. Click **Scan**. Review the counts for **All Selects** and **Highlights**, plus missing-media and timestamp warnings. Import is blocked if a referenced source cannot be located unambiguously.
+7. Click **Import to Resolve**. The plugin creates **two new timestamped timelines** by default: **All Selects** (every valid candidate) and **Highlights** (the highest-scoring percentage, in chronological order). Source files are imported once, and both timelines refer to them without re-encoding. If highlights are disabled, only All Selects is created.
 8. Inspect the generated timeline, source audio and clip markers. Check synchronization, cut points, and chronology before editing.
 
 ## Folder example
