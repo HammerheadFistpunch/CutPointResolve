@@ -1,0 +1,11 @@
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+# Proprietary Blackmagic SDK binary; users copy the version-matched file locally
+WorkflowIntegration.node
+# Test/user artifacts
+*.drp
+*.dra/
