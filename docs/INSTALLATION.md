@@ -2,6 +2,13 @@
 
 This document applies to **v0.1 developer preview**. The integration has automated mock-API tests but has **not yet been verified inside a live Resolve Studio installation**.
 
+## Required Cutpoint setup
+
+- **Cutpoint (upstream dependency for analysis):** [Official Cutpoint project / releases on PyPI](https://pypi.org/project/cutpoint/) · [Official GitHub repository and installation instructions](https://github.com/FerventOrange/cutpoint).
+- Install Cutpoint separately, analyze your footage, and retain the resulting `highlights.json` files. There is **no Cutpoint export step** required for this Resolve plugin.
+- Cutpoint need not be running, or even installed on the Resolve machine, **if** a completed Cutpoint analysis folder is available from another machine. The plugin installer does not install or upgrade Cutpoint.
+- Ollama is optional for Cutpoint's vision features, not a dependency of this importer.
+
 ## Requirements
 
 - Windows 10/11 and DaVinci Resolve **Studio** with Workflow Integrations support.

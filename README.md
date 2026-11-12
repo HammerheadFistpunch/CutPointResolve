@@ -2,6 +2,12 @@
 
 A free, general-purpose **DaVinci Resolve Studio Workflow Integration** that builds a source-native selects timeline from Cutpoint `highlights.json` files. It never re-encodes the source footage.
 
+## Required upstream analyzer: Cutpoint
+
+**[Cutpoint](https://pypi.org/project/cutpoint/)** is the required upstream application for generating the `highlights.json` analysis that CutPointResolve imports. Source code, releases, issues and official installation instructions: **[FerventOrange/cutpoint on GitHub](https://github.com/FerventOrange/cutpoint)**.
+
+Install and run Cutpoint to analyze the original footage first; then select its completed analysis folder in this importer. You **do not** need to export or re-encode clips in Cutpoint. Cutpoint does not need to be running when you import previously generated JSON; this plugin does not automatically install or invoke Cutpoint. Ollama is optional for Cutpoint's vision analysis.
+
 ## Features
 
 - Recursively discovers Cutpoint `highlights.json` in one analysis root.
