@@ -1,0 +1,14 @@
+'use strict';
+const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('fs');const os=require('os');const path=require('path');const core=require('../plugin/com.cutpoint.resolve/core');
+function fixture(){const dir=fs.mkdtempSync(path.join(os.tmpdir(),'cutpoint-resolve-'));const media=path.join(dir,'media');const ana=path.join(dir,'cutpoint');fs.mkdirSync(path.join(media,'Phone'),{recursive:true});fs.mkdirSync(ana);const f=path.join(media,'Phone','clip.mp4');fs.writeFileSync(f,'not actual video');fs.writeFileSync(path.join(ana,'highlights.json'),JSON.stringify({sources:[{path:f,duration:60,fps:30}],candidates:[{id:'h001',source:f,start:1.1,end:3.3,score:15,label:'speech'},{id:'h002',source:f,start:11,end:15,score:20,vision_label:'action'}]}));return {dir,media,ana,f};}
+test('recovers all subclips referencing the same original media',()=>{const x=fixture();try{const d=core.selectFiles(x.media,x.ana);assert.equal(d.selected.length,2);assert.equal(d.sources.length,1);assert.equal(d.missing.length,0);assert.deepEqual(core.orderSelections(d.selected,'source').map(c=>c.id),['h001','h002']);}finally{fs.rmSync(x.dir,{recursive:true,force:true});}});
+test('fails before importing if sources cannot be found',()=>{const x=fixture();fs.unlinkSync(x.f);try{const p=core.preview({mediaRoot:x.media,analysisRoot:x.ana});assert.equal(p.missing.length,2);assert.equal(p.selections,0);}finally{fs.rmSync(x.dir,{recursive:true,force:true});}});
+test('non-destructive Resolve operations append original source ranges and notes',()=>{const x=fixture();try{
+ const folders=[];const makeFolder=(name)=>({GetName:()=>name,GetClipList:()=>[],GetSubFolderList:()=>folders.filter(k=>k.parent===name)});
+ const root=makeFolder('root'); const items=[];const clip={GetClipProperty:()=>x.f};
+ let timeline=null, imported=0;
+ const mp={GetRootFolder:()=>root,AddSubFolder:(parent,name)=>{const o={parent:parent.GetName(),...makeFolder(name)};folders.push(o);return o;},SetCurrentFolder:()=>true,ImportMedia:(files)=>{imported++;return [clip]},CreateEmptyTimeline:(name)=>{timeline={name};return timeline;},AppendToTimeline:(c)=>{items.push(c[0]);return [{AddMarker:()=>true}];}};
+ const project={GetMediaPool:()=>mp,SetCurrentTimeline:()=>true};const resolve={GetProjectManager:()=>({GetCurrentProject:()=>project})};
+ const result=core.importToResolve(resolve,{mediaRoot:x.media,analysisRoot:x.ana,order:'source',mirrorBins:true,markers:true,importAllMedia:true});
+ assert.equal(result.selected,2);assert.equal(result.markers,2);assert.equal(imported,1);assert.equal(items.length,2);assert.equal(items[0].mediaPoolItem,clip);assert(items[0].endFrame>=items[0].startFrame);assert(timeline.name.includes('Cutpoint Selects'));
+ }finally{fs.rmSync(x.dir,{recursive:true,force:true});}});
