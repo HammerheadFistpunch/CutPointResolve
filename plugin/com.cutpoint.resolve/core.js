@@ -114,18 +114,27 @@ function importToResolve(resolve,config,onProgress=()=>{}){
    if(!mp.SetCurrentFolder(timelineBin))throw Error('Cannot set Timelines bin');
    const tl=mp.CreateEmptyTimeline(name);if(!tl)throw Error('Could not create timeline '+name);
    if(!project.SetCurrentTimeline(tl))throw Error('Could not activate new timeline '+name);
-   let clips=0,markers=0;
+   let clips=0,markers=0,linkWarnings=0;
    for(const c of selections){
      const source=existing.get(sourceKey(c.source));if(!source)throw Error('Missing media pool clip for '+c.source);
      const first=Math.max(0,Math.round(c.start*c.fps));
      const last=Math.max(first,Math.round(c.end*c.fps)-1);
      const items=safeArray(mp.AppendToTimeline([{mediaPoolItem:source,startFrame:first,endFrame:last}]));
      if(!items.length)throw Error(`AppendToTimeline failed in ${name} for ${path.basename(c.source)} ${c.start}-${c.end}`);
+     // Each append is one cut. Repeated cuts from the same source stay independent.
+     if(items.length>1){
+       try{
+         if(!tl.SetClipsLinked(items,true))throw Error('Resolve rejected the link');
+       }catch(e){
+         linkWarnings++;
+         onProgress(`${name}: could not link ${path.basename(c.source)} ${c.start}-${c.end}: ${e.message}`);
+       }
+     }
      clips++;
      if(config.markers!==false){try{if(addClipMarker(items[0],c))markers++;}catch(e){onProgress(`Marker warning: ${e.message}`);}}
      if(clips%10===0||clips===selections.length)onProgress(`${name}: added ${clips}/${selections.length} selections`);
    }
-   const result={name,clips,markers};timelineResults.push(result);return result;
+   const result={name,clips,markers,linkWarnings};timelineResults.push(result);return result;
  }
  const all=assemble(allName,orderSelections(d.selected,config.order));
  if(doHighlights)assemble(highlightsName,highlightSelections);

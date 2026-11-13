@@ -11,7 +11,14 @@ async function scan(){scanned=false;$('import').disabled=true;$('status').textCo
  }catch(e){$('status').textContent='Scan failed: '+e.message;}}
 for(const el of document.querySelectorAll('[data-pick]'))el.addEventListener('click',async()=>{const p=await window.cutpointBridge.pickFolder();if(p){$(el.dataset.pick).value=p;scanned=false;$('import').disabled=true;}});
 $('scan').addEventListener('click',scan);
-$('import').addEventListener('click',async()=>{if(!scanned)return;$('import').disabled=true;$('status').textContent='Importing…';try{const result=await window.cutpointBridge.run(config());$('status').textContent=`Created:\n${(result.timelines||[]).map(t=>`${t.name} (${t.clips} clips)`).join('\n')}\n${result.importedMedia} new media items · ${result.markers} markers`; }catch(e){$('status').textContent='Import stopped: '+e.message;}finally{$('import').disabled=false;}});
+$('import').addEventListener('click',async()=>{if(!scanned)return;$('import').disabled=true;$('status').textContent='Importing…';try{
+ const result=await window.cutpointBridge.run(config());
+ const timelines=result.timelines.map(t=>{
+   const warning=t.linkWarnings?` · Audio/video linking failed for ${t.linkWarnings} of ${t.clips} clips`:'';
+   return `${t.name} (${t.clips} clips)${warning}`;
+ });
+ $('status').textContent=`Created:\n${timelines.join('\n')}\n${result.importedMedia} new media items · ${result.markers} markers`;
+ }catch(e){$('status').textContent='Import stopped: '+e.message;}finally{$('import').disabled=false;}});
 window.cutpointBridge.onProgress(s=>$('status').textContent=s);
 window.cutpointBridge.project().then(p=>$('connected').textContent=p?'Resolve: '+p:'Open a Resolve project first').catch(e=>$('connected').textContent='Resolve connection unavailable: '+e.message);
 for(const id of ['order','highlightPercent','createHighlights','timelineName','mirrorBins','importAllMedia','markers'])$(id).addEventListener('change',()=>{scanned=false;$('import').disabled=true;$('status').textContent='Settings changed. Scan again to preview.';});
