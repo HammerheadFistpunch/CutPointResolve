@@ -18,7 +18,8 @@ function probe(file){
     const fps=fraction(v.avg_frame_rate)||fraction(v.r_frame_rate)||30;
     const raw=(d.format&&d.format.tags&&d.format.tags.creation_time)||(v.tags&&v.tags.creation_time)||null;
     const dt=raw?new Date(raw):null;
-    return {fps,captureMs:dt&&!isNaN(dt.getTime())?dt.getTime():null,captureSource:raw?'embedded creation_time':null,rawCapture:raw};
+    const hasAudioVideo = v.codec_type === 'video' && d.streams.some(s => s.codec_type === 'audio');
+    return {fps,captureMs:dt&&!isNaN(dt.getTime())?dt.getTime():null,captureSource:raw?'embedded creation_time':null,rawCapture:raw,hasAudioVideo};
   }catch(e){return {fps:30,captureMs:null,captureSource:null,warning:`ffprobe unavailable or failed: ${e.message.slice(0,140)}`};}
 }
 function selectFiles(mediaRoot,analysisRoot){
@@ -41,7 +42,23 @@ function selectFiles(mediaRoot,analysisRoot){
       if(!resolved){missing.push({path:original,reason:'Source not found'});continue;}
       const id=`${sourceKey(resolved)}|${c.start}|${c.end}|${af}`;
       if(used.has(id))continue;used.add(id);
-      selected.push({id:c.id||'',source:resolved,original,fromAnalysis:af,start:c.start,end:c.end,duration:c.end-c.start,score:Number(c.score)||0,label:c.vision_label||c.label||'Selected moment',vision:c.signals&&c.signals.vision,signals:c.signals||{}});
+      const text = [
+        ['Cutpoint label', c.label],
+        ['Display label', c.display_label],
+        ['Vision description', c.vision_label],
+        ['Scene description', c.signals?.events?.vlm?.label],
+        ['Dialogue title', c.dialogue_title],
+        ['Dialogue description', c.dialogue_description],
+        ['Story description', c.bit_description],
+        ['Transcript', c.transcript],
+      ];
+      const seenText = new Set();
+      const noteText = text.filter(([, value]) => {
+        if (typeof value !== 'string' || !value.trim() || seenText.has(value)) return false;
+        seenText.add(value);
+        return true;
+      });
+      selected.push({id:c.id||'',source:resolved,original,fromAnalysis:af,start:c.start,end:c.end,duration:c.end-c.start,score:Number(c.score)||0,label:c.vision_label||c.display_label||c.label||'Selected moment',noteText,vision:c.signals&&c.signals.vision,signals:c.signals||{}});
     }
   }
   const sources=[...new Set(selected.map(c=>c.source))];const metadata=new Map();
@@ -78,11 +95,38 @@ function safeArray(v){return Array.isArray(v)?v:[];}
 function children(folder){return safeArray(folder.GetSubFolderList());}
 function findOrCreate(mp,parent,name){let f=children(parent).find(f=>f.GetName()===name);return f || mp.AddSubFolder(parent,name);}
 function existingItems(folder,map){for(const c of safeArray(folder.GetClipList())){let p;try{p=c.GetClipProperty('File Path')}catch{}if(typeof p==='string'&&p)map.set(sourceKey(p),c);}for(const sub of children(folder))existingItems(sub,map);}
+function timelineItemsByStart(timeline) {
+ const itemsByStart = new Map();
+ for (const type of ['video', 'audio']) {
+   const count = timeline.GetTrackCount(type);
+   for (let index = 1; index <= count; index++) {
+     for (const item of safeArray(timeline.GetItemListInTrack(type, index))) {
+       const start = item.GetStart();
+       if (!itemsByStart.has(start)) itemsByStart.set(start, []);
+       itemsByStart.get(start).push({item, type});
+     }
+   }
+ }
+ return itemsByStart;
+}
 function addClipMarker(item,c){
- const score=c.score.toFixed(2);const notes=[`Cutpoint selection: ${c.id}`,`Reason/label: ${c.label}`,`Score: ${score}`,`Original: ${c.source}`,`Source In/Out: ${c.start.toFixed(3)} / ${c.end.toFixed(3)} seconds`,`Capture time source: ${c.captureSource}`,`Vision rating: ${c.vision??'unavailable'}`,`Signals: ${JSON.stringify(c.signals)}`].join('\n');
+ const notes = [
+   ...c.noteText.map(([name, value]) => `${name}: ${value}`),
+   `Cutpoint selection: ${c.id}`,
+   `Score: ${c.score.toFixed(2)}`,
+   `Original: ${c.source}`,
+   `Source In/Out: ${c.start.toFixed(3)} / ${c.end.toFixed(3)} seconds`,
+   `Capture time source: ${c.captureSource}`,
+   `Vision rating: ${c.vision??'unavailable'}`,
+   `Signals: ${JSON.stringify(c.signals)}`,
+ ].join('\n');
  const color=c.score>=20?'Green':c.score>=12?'Yellow':'Blue';
- // Timeline item marker frame 0 anchors annotation to selected clip rather than absolute timeline.
- return item.AddMarker(0,color,c.label,notes,1,JSON.stringify({provider:'cutpoint',candidate:c.id,source:c.source,in:c.start,out:c.end}));
+ const customData = JSON.stringify({provider:'cutpoint',candidate:c.id,source:c.source,in:c.start,out:c.end});
+ if (!item.AddMarker(0,color,c.label,notes,1,customData)) throw Error('Resolve rejected the marker');
+ if (typeof item.GetMarkerByCustomData === 'function') {
+   const marker = item.GetMarkerByCustomData(customData);
+   if (marker?.note !== notes) throw Error('Resolve did not return the full marker note');
+ }
 }
 function importToResolve(resolve,config,onProgress=()=>{}){
  const d=selectFiles(config.mediaRoot,config.analysisRoot);
@@ -114,27 +158,56 @@ function importToResolve(resolve,config,onProgress=()=>{}){
    if(!mp.SetCurrentFolder(timelineBin))throw Error('Cannot set Timelines bin');
    const tl=mp.CreateEmptyTimeline(name);if(!tl)throw Error('Could not create timeline '+name);
    if(!project.SetCurrentTimeline(tl))throw Error('Could not activate new timeline '+name);
-   let clips=0,markers=0,linkWarnings=0;
+   const cuts = [];
    for(const c of selections){
      const source=existing.get(sourceKey(c.source));if(!source)throw Error('Missing media pool clip for '+c.source);
      const first=Math.max(0,Math.round(c.start*c.fps));
      const last=Math.max(first,Math.round(c.end*c.fps)-1);
      const items=safeArray(mp.AppendToTimeline([{mediaPoolItem:source,startFrame:first,endFrame:last}]));
      if(!items.length)throw Error(`AppendToTimeline failed in ${name} for ${path.basename(c.source)} ${c.start}-${c.end}`);
-     // Each append is one cut. Repeated cuts from the same source stay independent.
-     if(items.length>1){
+     cuts.push({selection:c, items});
+     if(cuts.length%10===0||cuts.length===selections.length)onProgress(`${name}: added ${cuts.length}/${selections.length} selections`);
+   }
+   // The timeline is new and each append adds one cut at a distinct record position.
+   // Track lists can expose companion items omitted by the append response.
+   const canReadTracks = typeof tl.GetTrackCount === 'function' && typeof tl.GetItemListInTrack === 'function';
+   const byStart = canReadTracks ? timelineItemsByStart(tl) : new Map();
+   let markers=0,linkWarnings=0,markerWarnings=0;
+   for (const {selection:c, items} of cuts) {
+     const trackItems = byStart.get(items[0].GetStart?.()) || [];
+     const video = trackItems.find(entry => entry.type === 'video')?.item;
+     const audio = trackItems.filter(entry => entry.type === 'audio').map(entry => entry.item);
+     const group = trackItems.length ? (video && audio.length ? [video, ...audio] : []) : items;
+     const cutName = `${path.basename(c.source)} ${c.start}-${c.end}`;
+     try{
+       if (group.length < 2 && d.metadata.get(sourceKey(c.source)).hasAudioVideo) {
+         throw Error('Resolve did not expose both audio and video on the timeline');
+       }
+       if(group.length>1){
+         if(!tl.SetClipsLinked(group,true))throw Error('Resolve rejected the link');
+         if (video && typeof video.GetLinkedItems === 'function') {
+           const linked = safeArray(video.GetLinkedItems());
+           const linkedIds = new Set(linked.map(item => item.GetUniqueId?.()).filter(Boolean));
+           if (!audio.every(item => linked.includes(item) || linkedIds.has(item.GetUniqueId?.()))) {
+             throw Error('Resolve did not confirm the audio/video link');
+           }
+         }
+       }
+     }catch(e){
+       linkWarnings++;
+       onProgress(`${name}: could not link ${cutName}: ${e.message}`);
+     }
+     if(config.markers!==false){
        try{
-         if(!tl.SetClipsLinked(items,true))throw Error('Resolve rejected the link');
+         addClipMarker(video || items[0],c);
+         markers++;
        }catch(e){
-         linkWarnings++;
-         onProgress(`${name}: could not link ${path.basename(c.source)} ${c.start}-${c.end}: ${e.message}`);
+         markerWarnings++;
+         onProgress(`${name}: marker note warning for ${cutName}: ${e.message}`);
        }
      }
-     clips++;
-     if(config.markers!==false){try{if(addClipMarker(items[0],c))markers++;}catch(e){onProgress(`Marker warning: ${e.message}`);}}
-     if(clips%10===0||clips===selections.length)onProgress(`${name}: added ${clips}/${selections.length} selections`);
    }
-   const result={name,clips,markers,linkWarnings};timelineResults.push(result);return result;
+   const result={name,clips:cuts.length,markers,linkWarnings,markerWarnings};timelineResults.push(result);return result;
  }
  const all=assemble(allName,orderSelections(d.selected,config.order));
  if(doHighlights)assemble(highlightsName,highlightSelections);

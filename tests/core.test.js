@@ -7,19 +7,50 @@ test('non-destructive Resolve operations append original source ranges and notes
  const folders=[];const makeFolder=(name)=>({GetName:()=>name,GetClipList:()=>[],GetSubFolderList:()=>folders.filter(k=>k.parent===name)});
  const root=makeFolder('root'); const items=[];const clip={GetClipProperty:()=>x.f};
  let timeline=null, imported=0;
- const appended=[],links=[],progress=[];
+ const analysisFile=path.join(x.ana,'highlights.json');
+ const analysis=JSON.parse(fs.readFileSync(analysisFile,'utf8'));
+ const transcript='First line.\n'+ 'Dialogue with accents: café. '.repeat(50) + 'End of transcript.';
+ Object.assign(analysis.candidates[1], {
+   label:'action-moment',
+   display_label:'Rocky Climb',
+   dialogue_title:'Spotter Instructions',
+   dialogue_description:'The spotter talks the driver through the climb.',
+   bit_description:'The truck makes it over the ledge.',
+   transcript,
+   signals:{vision:8,events:{vlm:{label:'Truck approaching the ledge'}}},
+ });
+ fs.writeFileSync(analysisFile,JSON.stringify(analysis));
+ const appended=[],links=[],progress=[],notes=[];
  const mp={GetRootFolder:()=>root,AddSubFolder:(parent,name)=>{const o={parent:parent.GetName(),...makeFolder(name)};folders.push(o);return o;},SetCurrentFolder:()=>true,ImportMedia:(files)=>{imported++;return [clip]},CreateEmptyTimeline:(name)=>{
-   timeline={name,SetClipsLinked:(group,linked)=>{links.push({name,group,linked});return links.length!==2;}};
+   const cuts=[];
+   timeline={
+     name,cuts,
+     GetTrackCount:type=>type==='video'?1:2,
+     GetItemListInTrack:(type,index)=>cuts.map(group=>group[type==='video'?0:index]),
+     SetClipsLinked:(group,linked)=>{
+       links.push({name,group,linked});
+       if(links.length!==2)group[0].linked=group.slice(1);
+       return true;
+     },
+   };
    return timeline;
  },AppendToTimeline:(c)=>{
    items.push(c[0]);
-   const group=[{AddMarker:()=>true},{},{}];
+   const start=86400+timeline.cuts.length*100;
+   const video={
+     GetStart:()=>start,
+     GetLinkedItems:()=>video.linked||[],
+     AddMarker:(_frame,_color,_name,note)=>{notes.push(note);return true;},
+     GetMarkerByCustomData:()=>({note:notes.length===2?notes.at(-1).slice(0,100):notes.at(-1)}),
+   };
+   const group=[video,{GetStart:()=>start},{GetStart:()=>start}];
    appended.push(group);
-   return group;
+   timeline.cuts.push(group);
+   return [video];
  }};
  const project={GetMediaPool:()=>mp,SetCurrentTimeline:()=>true};const resolve={GetProjectManager:()=>({GetCurrentProject:()=>project})};
  const result=core.importToResolve(resolve,{mediaRoot:x.media,analysisRoot:x.ana,order:'source',mirrorBins:true,markers:true,importAllMedia:true},message=>progress.push(message));
- assert.equal(result.selected,2);assert.equal(result.markers,3);assert.equal(imported,1);assert.equal(items.length,3);assert.equal(result.timelines.length,2);assert.equal(result.timelines[0].clips,2);assert.equal(result.timelines[1].clips,1);assert.equal(items[0].mediaPoolItem,clip);assert(items[0].endFrame>=items[0].startFrame);assert(timeline.name.includes('Cutpoint - Highlights'));
+ assert.equal(result.selected,2);assert.equal(result.markers,2);assert.equal(imported,1);assert.equal(items.length,3);assert.equal(result.timelines.length,2);assert.equal(result.timelines[0].clips,2);assert.equal(result.timelines[1].clips,1);assert.equal(items[0].mediaPoolItem,clip);assert(items[0].endFrame>=items[0].startFrame);assert(timeline.name.includes('Cutpoint - Highlights'));
  assert.deepEqual(links.map(link=>link.name),[result.timelines[0].name,result.timelines[0].name,result.timelines[1].name]);
  links.forEach((link,index)=>{
    assert.equal(link.linked,true);
@@ -27,7 +58,15 @@ test('non-destructive Resolve operations append original source ranges and notes
    link.group.forEach((item,itemIndex)=>assert.equal(item,appended[index][itemIndex]));
  });
  assert.deepEqual(result.timelines.map(t=>t.linkWarnings),[1,0]);
- assert(progress.some(message=>message.includes('Resolve rejected the link')));
+ assert(progress.some(message=>message.includes('Resolve did not confirm the audio/video link')));
+ assert.deepEqual(result.timelines.map(t=>t.markerWarnings),[1,0]);
+ assert(progress.some(message=>message.includes('Resolve did not return the full marker note')));
+ assert(notes[0].includes('Cutpoint label: speech'));
+ for(const note of notes.slice(1)){
+   for(const text of ['action-moment','Rocky Climb','action','Truck approaching the ledge','Spotter Instructions','The spotter talks the driver through the climb.','The truck makes it over the ledge.',transcript]){
+     assert(note.includes(text));
+   }
+ }
  }finally{fs.rmSync(x.dir,{recursive:true,force:true});}});
 test('highlight selection keeps top scores with chronological ordering',()=>{
  const c=(id,score,time)=>({id,score,captureMs:time,source:'video.mp4',start:0});

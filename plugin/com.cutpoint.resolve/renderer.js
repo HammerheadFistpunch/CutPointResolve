@@ -14,8 +14,9 @@ $('scan').addEventListener('click',scan);
 $('import').addEventListener('click',async()=>{if(!scanned)return;$('import').disabled=true;$('status').textContent='Importing…';try{
  const result=await window.cutpointBridge.run(config());
  const timelines=result.timelines.map(t=>{
-   const warning=t.linkWarnings?` · Audio/video linking failed for ${t.linkWarnings} of ${t.clips} clips`:'';
-   return `${t.name} (${t.clips} clips)${warning}`;
+   const links=t.linkWarnings?` · Audio/video link warnings for ${t.linkWarnings} of ${t.clips} cuts`:'';
+   const notes=t.markerWarnings?` · Marker note warnings for ${t.markerWarnings} of ${t.clips} cuts`:'';
+   return `${t.name} (${t.clips} clips)${links}${notes}`;
  });
  $('status').textContent=`Created:\n${timelines.join('\n')}\n${result.importedMedia} new media items · ${result.markers} markers`;
  }catch(e){$('status').textContent='Import stopped: '+e.message;}finally{$('import').disabled=false;}});
